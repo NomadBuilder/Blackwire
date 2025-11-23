@@ -65,6 +65,56 @@ class Neo4jClient:
         if self.driver:
             self.driver.close()
     
+    def _reconnect_if_needed(self):
+        """Reconnect to Neo4j if the connection is dead (e.g., after Render spin-down)."""
+        if not self.driver:
+            return False
+        
+        try:
+            # Test if connection is alive
+            with self.driver.session() as test_session:
+                test_session.run("RETURN 1").consume()
+            return True  # Connection is alive
+        except Exception as e:
+            error_str = str(e).lower()
+            if "defunct" in error_str or "failed to write" in error_str or "failed to read" in error_str:
+                logger.warning(f"⚠️  Neo4j connection is dead, attempting to reconnect...")
+                try:
+                    # Close old driver
+                    try:
+                        self.driver.close()
+                    except:
+                        pass
+                    
+                    # Recreate connection
+                    uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+                    user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
+                    password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
+                    
+                    from neo4j import GraphDatabase
+                    self.driver = GraphDatabase.driver(
+                        uri, 
+                        auth=(user, password),
+                        max_connection_lifetime=3600,
+                        max_connection_pool_size=50,
+                        connection_acquisition_timeout=60,
+                        connection_timeout=30
+                    )
+                    
+                    # Verify new connection
+                    with self.driver.session() as verify_session:
+                        verify_session.run("RETURN 1").consume()
+                    
+                    logger.info("✅ Neo4j connection re-established successfully")
+                    return True
+                except Exception as reconnect_error:
+                    logger.error(f"❌ Failed to reconnect to Neo4j: {reconnect_error}")
+                    self.driver = None
+                    return False
+            else:
+                # Not a connection error, re-raise
+                raise
+    
     def _execute_query(self, query: str, parameters: Optional[Dict] = None):
         """Execute a Cypher query with automatic reconnection."""
         if not self.driver:
@@ -73,6 +123,11 @@ class Neo4jClient:
         max_retries = 2
         for attempt in range(max_retries):
             try:
+                # Check and reconnect if needed (especially after Render spin-down)
+                if attempt > 0 or not self._reconnect_if_needed():
+                    if not self._reconnect_if_needed():
+                        return None
+                
                 with self.driver.session() as session:
                     return list(session.run(query, parameters or {}))
             except Exception as e:
@@ -80,14 +135,9 @@ class Neo4jClient:
                 # Check if it's a connection error
                 if "defunct" in error_str or "failed to write" in error_str or "failed to read" in error_str:
                     if attempt < max_retries - 1:
-                        logger.warning(f"⚠️  Neo4j connection error (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
-                        # Try to verify connection is still alive
-                        try:
-                            with self.driver.session() as verify_session:
-                                verify_session.run("RETURN 1").consume()
-                        except:
-                            logger.warning("⚠️  Connection verification failed, but continuing...")
-                        continue
+                        logger.warning(f"⚠️  Neo4j connection error (attempt {attempt + 1}/{max_retries}): {e}. Reconnecting...")
+                        if not self._reconnect_if_needed():
+                            continue
                     else:
                         logger.error(f"❌ Neo4j connection failed after {max_retries} attempts: {e}")
                         return None
