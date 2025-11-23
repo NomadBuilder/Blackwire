@@ -487,7 +487,7 @@ class Neo4jClient:
                         phone_formats.append(f"1{phone_clean}")  # Add 1 to make 1XXXXXXXXXX
                 
                 params["phones"] = list(set(phone_formats))  # Remove duplicates
-                logger.debug(f"Phone format variations for query: {params['phones']}")
+                logger.info(f"🔍 Searching for phones with formats: {params['phones']}")
                 
                 # Find matching phone nodes - check both phone (primary key) and formatted
                 # Also check raw_input array for backwards compatibility
@@ -496,15 +496,28 @@ class Neo4jClient:
                 WHERE n.phone IN $phones 
                    OR n.formatted IN $phones
                    OR ANY(phone_var IN $phones WHERE phone_var IN COALESCE(n.raw_input, []))
-                RETURN DISTINCT id(n) as nid, n
+                RETURN DISTINCT id(n) as nid, n.phone as phone, n.formatted as formatted
                 """
                 phone_result = session.run(phone_query, params)
                 seen_ids = set()
+                found_count = 0
                 for record in phone_result:
                     nid = record["nid"]
+                    phone_val = record.get("phone", "")
+                    formatted_val = record.get("formatted", "")
                     if nid not in seen_ids:  # Deduplicate
                         entity_ids.append(nid)
                         seen_ids.add(nid)
+                        found_count += 1
+                        logger.info(f"✅ Found phone node: id={nid}, phone={phone_val}, formatted={formatted_val}")
+                
+                if found_count == 0:
+                    logger.warning(f"⚠️  No phone nodes found for formats: {params['phones']}")
+                    # Debug: Check what phones actually exist in the database
+                    debug_query = "MATCH (n:PhoneNumber) RETURN n.phone as phone, n.formatted as formatted LIMIT 10"
+                    debug_result = session.run(debug_query)
+                    existing_phones = [(r.get("phone", ""), r.get("formatted", "")) for r in debug_result]
+                    logger.info(f"📋 Sample phones in database: {existing_phones}")
             
             if entities_to_show.get("domain"):
                 params["domains"] = list(set(entities_to_show["domain"]))
@@ -540,7 +553,10 @@ class Neo4jClient:
                     entity_ids.append(record["nid"])
             
             if not entity_ids:
+                logger.warning(f"⚠️  No entity IDs found for search: {entities_to_show}")
                 return {"nodes": [], "edges": []}
+            
+            logger.info(f"✅ Found {len(entity_ids)} entity IDs to display in graph")
             
             # Get our entities and their relationship nodes only (NOT other entity nodes)
             all_nodes_query = """

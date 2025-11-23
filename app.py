@@ -444,8 +444,16 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 # Store phone using formatted value as primary key to avoid duplicates
                 # The formatted value (E.164) is used as the node key
                 formatted = enrichment_data.get('formatted') or value
-                app_logger.debug(f"📞 Storing phone in Neo4j: value={value}, formatted={formatted}")
-                neo4j_client.create_phone(formatted, **enrichment_data)
+                app_logger.info(f"📞 Storing phone in Neo4j: value={value}, formatted={formatted}")
+                try:
+                    result = neo4j_client.create_phone(formatted, **enrichment_data)
+                    if result:
+                        app_logger.info(f"✅ Successfully stored phone {formatted} in Neo4j")
+                    else:
+                        app_logger.warning(f"⚠️  create_phone returned None for {formatted}")
+                except Exception as store_error:
+                    app_logger.error(f"❌ Error storing phone {formatted}: {store_error}", exc_info=True)
+                    raise  # Re-raise to be caught by outer try/except
                 
                 # Link to country (use formatted phone as key)
                 if enrichment_data.get("country"):
