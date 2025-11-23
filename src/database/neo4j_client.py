@@ -21,7 +21,7 @@ class Neo4jClient:
     
     def __init__(self):
         if not NEO4J_AVAILABLE:
-            print("⚠️  Neo4j driver not available. Install with: pip install neo4j")
+            logger.warning("⚠️  Neo4j driver not available. Install with: pip install neo4j")
             self.driver = None
             return
             
@@ -30,6 +30,8 @@ class Neo4jClient:
         user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
         
+        logger.info(f"🔌 Attempting Neo4j connection to {uri} with user {user}")
+        
         try:
             # Neo4j Aura requires SSL - the driver handles this automatically for neo4j+s:// URIs
             self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -37,15 +39,16 @@ class Neo4jClient:
             with self.driver.session() as session:
                 result = session.run("RETURN 1 as test")
                 result.consume()  # Consume result to ensure query completes
-            print(f"✅ Neo4j connection established to {uri}")
+            logger.info(f"✅ Neo4j connection established to {uri}")
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            print(f"⚠️  Could not connect to Neo4j: {e}")
-            print(f"   URI: {uri}")
-            print(f"   User: {user}")
-            print(f"   Error details: {error_details}")
-            print("   Neo4j will be optional. Graph features will be disabled.")
+            logger.error(f"⚠️  Could not connect to Neo4j: {e}")
+            logger.error(f"   URI: {uri}")
+            logger.error(f"   User: {user}")
+            logger.error(f"   Password set: {'Yes' if password else 'No'}")
+            logger.error(f"   Error details: {error_details}")
+            logger.warning("   Neo4j will be optional. Graph features will be disabled.")
             self.driver = None
     
     def close(self):
