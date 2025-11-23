@@ -50,12 +50,13 @@ app.config['SECRET_KEY'] = Config.SECRET_KEY
 def set_security_headers(response):
     """Add security headers including CSP to block extension scripts."""
     # Content Security Policy: Allow self, block external extension scripts
+    # Note: Browser extensions will still show warnings, but they're harmless
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://d3js.org; "  # Allow D3.js and inline scripts
-        "style-src 'self' 'unsafe-inline'; "  # Allow inline styles
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://d3js.org; "  # Allow D3.js, blob URLs (for D3), and inline scripts
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "  # Allow inline styles and Google Fonts CSS
         "img-src 'self' data: https:; "  # Allow images from self, data URIs, and HTTPS
-        "font-src 'self' data:; "  # Allow fonts from self and data URIs
+        "font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; "  # Allow fonts from self, data URIs, and Google Fonts
         "connect-src 'self' https://api.ipapi.com https://api.numlookupapi.com https://www.virustotal.com https://api.etherscan.io https://blockchain.info https://api.blockchair.com https://*.databases.neo4j.io; "  # Allow API connections
         "frame-ancestors 'none'; "  # Prevent clickjacking
         "base-uri 'self'; "  # Restrict base tag
