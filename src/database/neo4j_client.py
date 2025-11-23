@@ -565,20 +565,37 @@ class Neo4jClient:
                     phone_formats.append(phone_clean)
                     
                     # Generate all possible format variations
-                    if phone_clean.startswith("+1") and len(phone_clean) == 12:
-                        # Already E.164 format (+1XXXXXXXXXX) - this is what we store
+                    if phone_clean.startswith("+"):
+                        # Already has country code prefix (E.164 format) - this is what we store
+                        phone_formats.append(phone_clean)
+                        # Also try without + for matching
+                        phone_formats.append(phone_clean[1:])  # Remove +
+                    elif phone_clean.startswith("+1") and len(phone_clean) == 12:
+                        # US E.164 format (+1XXXXXXXXXX) - this is what we store
                         phone_formats.append(phone_clean)
                         # Also try without +1 for matching
                         phone_formats.append(phone_clean[2:])  # Remove +1
                         phone_formats.append(phone_clean[1:])  # Remove +
                     elif phone_clean.startswith("1") and len(phone_clean) == 11:
-                        # Has 1 prefix (1XXXXXXXXXX)
+                        # Has 1 prefix (1XXXXXXXXXX) - likely US
                         phone_formats.append(f"+{phone_clean}")  # Add + to make +1XXXXXXXXXX
                         phone_formats.append(phone_clean[1:])  # Remove 1 to make 10-digit
                     elif phone_clean.isdigit() and len(phone_clean) == 10:
-                        # 10-digit number (XXXXXXXXXX) - most common case
+                        # 10-digit number (XXXXXXXXXX) - most common US case
                         phone_formats.append(f"+1{phone_clean}")  # Add +1 to make +1XXXXXXXXXX
                         phone_formats.append(f"1{phone_clean}")  # Add 1 to make 1XXXXXXXXXX
+                    elif phone_clean.isdigit() and len(phone_clean) >= 11:
+                        # International number (11+ digits) - try with + prefix
+                        # Check if it starts with a known country code
+                        if phone_clean.startswith("52") and len(phone_clean) == 11:
+                            # Mexico (+52)
+                            phone_formats.append(f"+{phone_clean}")
+                        elif phone_clean.startswith("1") and len(phone_clean) == 11:
+                            # US (1XXXXXXXXXX)
+                            phone_formats.append(f"+{phone_clean}")
+                        else:
+                            # Generic international - try with +
+                            phone_formats.append(f"+{phone_clean}")
                 
                 params["phones"] = list(set(phone_formats))  # Remove duplicates
                 logger.info(f"🔍 Searching for phones with formats: {params['phones']}")
