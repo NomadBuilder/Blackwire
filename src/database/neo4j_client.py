@@ -3,6 +3,7 @@
 import os
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+from src.utils.logger import logger
 
 load_dotenv()
 
