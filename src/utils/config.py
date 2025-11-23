@@ -18,7 +18,8 @@ class Config:
     POSTGRES_DB = os.getenv("POSTGRES_DB", "blackwire")
     
     NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+    # Support both NEO4J_USER and NEO4J_USERNAME (Neo4j Aura uses USERNAME)
+    NEO4J_USER = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
     NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "blackwire123password")
     
     # Flask

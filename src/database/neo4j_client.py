@@ -25,7 +25,8 @@ class Neo4jClient:
             return
             
         uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        user = os.getenv("NEO4J_USER", "neo4j")
+        # Support both NEO4J_USER and NEO4J_USERNAME (Neo4j Aura uses USERNAME)
+        user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
         
         try:
