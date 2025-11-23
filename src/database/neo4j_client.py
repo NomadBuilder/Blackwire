@@ -39,10 +39,11 @@ class Neo4jClient:
             self.driver = GraphDatabase.driver(
                 uri, 
                 auth=(user, password),
-                max_connection_lifetime=3600,  # 1 hour
-                max_connection_pool_size=50,
-                connection_acquisition_timeout=60,
-                connection_timeout=30
+                max_connection_lifetime=1800,  # 30 minutes (shorter for free tier stability)
+                max_connection_pool_size=10,  # Smaller pool for free tier
+                connection_acquisition_timeout=30,  # Shorter timeout
+                connection_timeout=15,  # Shorter timeout
+                keep_alive=True  # Enable keep-alive to detect dead connections faster
             )
             # Test connection with timeout
             with self.driver.session() as session:
@@ -71,7 +72,7 @@ class Neo4jClient:
             return False
         
         try:
-            # Test if connection is alive
+            # Test if connection is alive with a quick query
             with self.driver.session() as test_session:
                 test_session.run("RETURN 1").consume()
             return True  # Connection is alive
@@ -80,13 +81,20 @@ class Neo4jClient:
             if "defunct" in error_str or "failed to write" in error_str or "failed to read" in error_str:
                 logger.warning(f"⚠️  Neo4j connection is dead, attempting to reconnect...")
                 try:
-                    # Close old driver
-                    try:
-                        self.driver.close()
-                    except:
-                        pass
+                    # Fully close old driver (this is important for cleanup)
+                    old_driver = self.driver
+                    self.driver = None  # Set to None first to prevent concurrent access
                     
-                    # Recreate connection
+                    try:
+                        old_driver.close()
+                    except Exception as close_error:
+                        logger.debug(f"Error closing old driver (expected): {close_error}")
+                    
+                    # Small delay to ensure cleanup completes
+                    import time
+                    time.sleep(0.5)
+                    
+                    # Recreate connection with fresh settings
                     uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
                     user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
                     password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
@@ -95,18 +103,28 @@ class Neo4jClient:
                     self.driver = GraphDatabase.driver(
                         uri, 
                         auth=(user, password),
-                        max_connection_lifetime=3600,
-                        max_connection_pool_size=50,
-                        connection_acquisition_timeout=60,
-                        connection_timeout=30
+                        max_connection_lifetime=1800,  # 30 minutes (shorter for free tier)
+                        max_connection_pool_size=10,  # Smaller pool for free tier
+                        connection_acquisition_timeout=30,  # Shorter timeout
+                        connection_timeout=15,  # Shorter timeout
+                        keep_alive=True  # Enable keep-alive
                     )
                     
-                    # Verify new connection
-                    with self.driver.session() as verify_session:
-                        verify_session.run("RETURN 1").consume()
+                    # Verify new connection with retry
+                    max_verify_attempts = 3
+                    for verify_attempt in range(max_verify_attempts):
+                        try:
+                            with self.driver.session() as verify_session:
+                                verify_session.run("RETURN 1").consume()
+                            logger.info("✅ Neo4j connection re-established successfully")
+                            return True
+                        except Exception as verify_error:
+                            if verify_attempt < max_verify_attempts - 1:
+                                logger.debug(f"Connection verification attempt {verify_attempt + 1} failed, retrying...")
+                                time.sleep(0.5)
+                            else:
+                                raise verify_error
                     
-                    logger.info("✅ Neo4j connection re-established successfully")
-                    return True
                 except Exception as reconnect_error:
                     logger.error(f"❌ Failed to reconnect to Neo4j: {reconnect_error}")
                     self.driver = None
