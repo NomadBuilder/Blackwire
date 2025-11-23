@@ -1184,6 +1184,59 @@ def health():
     }), 200
 
 
+@app.route('/api/debug/neo4j', methods=['GET'])
+def debug_neo4j():
+    """Debug endpoint to check Neo4j status and contents."""
+    if not neo4j_client:
+        return jsonify({
+            "error": "Neo4j client not initialized",
+            "neo4j_available": NEO4J_AVAILABLE
+        }), 200
+    
+    if not neo4j_client.driver:
+        return jsonify({
+            "error": "Neo4j driver is None - connection failed",
+            "neo4j_available": NEO4J_AVAILABLE,
+            "client_initialized": True,
+            "driver_connected": False
+        }), 200
+    
+    try:
+        with neo4j_client.driver.session() as session:
+            # Test connection
+            result = session.run("RETURN 1 as test")
+            list(result)
+            
+            # Count all nodes
+            count_result = session.run("MATCH (n) RETURN count(n) as total")
+            total_nodes = 0
+            for record in count_result:
+                total_nodes = record["total"]
+            
+            # Count phone nodes
+            phone_count_result = session.run("MATCH (n:PhoneNumber) RETURN count(n) as total")
+            phone_count = 0
+            for record in phone_count_result:
+                phone_count = record["total"]
+            
+            # Get sample phone numbers
+            phone_result = session.run("MATCH (n:PhoneNumber) RETURN n.phone as phone, n.formatted as formatted LIMIT 10")
+            sample_phones = [{"phone": r.get("phone", ""), "formatted": r.get("formatted", "")} for r in phone_result]
+            
+            return jsonify({
+                "status": "connected",
+                "total_nodes": total_nodes,
+                "phone_nodes": phone_count,
+                "sample_phones": sample_phones,
+                "connection_test": True
+            }), 200
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "connection_test": False
+        }), 200
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', '1') == '1'
