@@ -231,8 +231,14 @@ def enrich_phone(phone_number: str) -> Dict:
         result["errors"] = [error_msg]
         logger.error(f"Unexpected error enriching phone {phone_number}: {error_msg}", exc_info=True)
     
-    # If we have errors but no formatted number, try to provide helpful guidance
-    if result["errors"] and not result["formatted"]:
+    # Only show errors if we have NO results at all (no formatted number, no data)
+    # If we successfully parsed and got data, clear any errors
+    if result.get("formatted") or result.get("is_valid"):
+        # We got results, so clear errors - the number worked!
+        result["errors"] = []
+    
+    # Only show error guidance if we truly have no results
+    if result["errors"] and not result.get("formatted"):
         # Check if it looks like it might need a country code
         phone_clean = re.sub(r'[\s\-\(\)\.]', '', phone_number.strip())
         if len(phone_clean) == 10 or (len(phone_clean) == 11 and phone_clean.startswith("1")):
