@@ -34,7 +34,16 @@ class Neo4jClient:
         
         try:
             # Neo4j Aura requires SSL - the driver handles this automatically for neo4j+s:// URIs
-            self.driver = GraphDatabase.driver(uri, auth=(user, password))
+            # Configure connection pool for better reliability
+            from neo4j import GraphDatabase
+            self.driver = GraphDatabase.driver(
+                uri, 
+                auth=(user, password),
+                max_connection_lifetime=3600,  # 1 hour
+                max_connection_pool_size=50,
+                connection_acquisition_timeout=60,
+                connection_timeout=30
+            )
             # Test connection with timeout
             with self.driver.session() as session:
                 result = session.run("RETURN 1 as test")
@@ -57,11 +66,35 @@ class Neo4jClient:
             self.driver.close()
     
     def _execute_query(self, query: str, parameters: Optional[Dict] = None):
-        """Execute a Cypher query."""
+        """Execute a Cypher query with automatic reconnection."""
         if not self.driver:
             return None
-        with self.driver.session() as session:
-            return list(session.run(query, parameters or {}))
+        
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                with self.driver.session() as session:
+                    return list(session.run(query, parameters or {}))
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if it's a connection error
+                if "defunct" in error_str or "failed to write" in error_str or "failed to read" in error_str:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"⚠️  Neo4j connection error (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
+                        # Try to verify connection is still alive
+                        try:
+                            with self.driver.session() as verify_session:
+                                verify_session.run("RETURN 1").consume()
+                        except:
+                            logger.warning("⚠️  Connection verification failed, but continuing...")
+                        continue
+                    else:
+                        logger.error(f"❌ Neo4j connection failed after {max_retries} attempts: {e}")
+                        return None
+                else:
+                    # Not a connection error, re-raise
+                    raise
+        return None
     
     # Phone number nodes
     def create_phone(self, phone: str, **properties):
