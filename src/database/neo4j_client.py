@@ -764,15 +764,51 @@ class Neo4jClient:
                     logger.info(f"📋 Sample phones in database: {existing_phones}")
             
             if entities_to_show.get("domain"):
-                params["domains"] = list(set(entities_to_show["domain"]))
+                domains = list(set(entities_to_show["domain"]))  # Dedupe
+                # Normalize domains (remove protocol, www, paths, etc.) to match stored format
+                import re
+                domain_formats = []
+                for domain in domains:
+                    domain_clean = domain.strip().lower()
+                    # Remove protocol
+                    domain_clean = re.sub(r'^https?://', '', domain_clean)
+                    # Remove www.
+                    domain_clean = re.sub(r'^www\.', '', domain_clean)
+                    # Remove paths, query strings, fragments
+                    domain_clean = domain_clean.split('/')[0].split('?')[0].split('#')[0]
+                    # Remove trailing slash
+                    domain_clean = domain_clean.rstrip('/')
+                    
+                    # Add both original and normalized versions for matching
+                    domain_formats.append(domain_clean)
+                    if domain_clean != domain.strip().lower():
+                        domain_formats.append(domain.strip().lower())  # Also try original
+                
+                params["domains"] = list(set(domain_formats))  # Remove duplicates
+                logger.info(f"🔍 Searching for domains with formats: {params['domains']}")
+                
                 domain_query = """
                 MATCH (n:Domain)
                 WHERE n.domain IN $domains
-                RETURN id(n) as nid, n
+                RETURN DISTINCT id(n) as nid, n.domain as domain
                 """
                 domain_result = session.run(domain_query, params)
+                found_count = 0
                 for record in domain_result:
-                    entity_ids.append(record["nid"])
+                    nid = record["nid"]
+                    domain_val = record.get("domain", "")
+                    if nid not in entity_ids:  # Avoid duplicates
+                        entity_ids.append(nid)
+                        found_count += 1
+                        logger.info(f"✅ Found domain node: id={nid}, domain={domain_val}")
+                
+                if found_count == 0:
+                    logger.warning(f"⚠️  No domain nodes found for formats: {params['domains']}")
+                    # Debug: Check what's actually in the database
+                    sample_query = "MATCH (n:Domain) RETURN n.domain as domain LIMIT 5"
+                    sample_result = session.run(sample_query)
+                    sample_domains = [r.get("domain", "") for r in sample_result]
+                    logger.info(f"📋 Sample domains in database: {sample_domains}")
             
             if entities_to_show.get("wallet"):
                 params["wallets"] = list(set(entities_to_show["wallet"]))
