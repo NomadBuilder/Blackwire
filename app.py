@@ -1145,9 +1145,38 @@ def health():
         "blockchair.com": get_api_remaining("blockchair.com")
     }
     
+    # Check Neo4j connection status
+    neo4j_status = {
+        "available": NEO4J_AVAILABLE,
+        "client_initialized": neo4j_client is not None,
+        "driver_connected": neo4j_client is not None and neo4j_client.driver is not None,
+        "connection_test": False,
+        "node_count": 0
+    }
+    
+    if neo4j_client and neo4j_client.driver:
+        try:
+            # Test connection
+            with neo4j_client.driver.session() as session:
+                result = session.run("RETURN 1 as test")
+                list(result)  # Consume result
+                neo4j_status["connection_test"] = True
+                
+                # Count nodes
+                count_result = session.run("MATCH (n) RETURN count(n) as total")
+                for record in count_result:
+                    neo4j_status["node_count"] = record["total"]
+                    
+                # Sample phone numbers
+                phone_result = session.run("MATCH (n:PhoneNumber) RETURN n.phone as phone, n.formatted as formatted LIMIT 5")
+                phones = [(r.get("phone", ""), r.get("formatted", "")) for r in phone_result]
+                neo4j_status["sample_phones"] = phones
+        except Exception as e:
+            neo4j_status["error"] = str(e)
+    
     return jsonify({
         "status": "ok",
-        "neo4j": NEO4J_AVAILABLE and neo4j_client is not None,
+        "neo4j": neo4j_status,
         "postgres": POSTGRES_AVAILABLE and postgres_client is not None,
         "cache": cache_stats,
         "api_quotas": api_status,
