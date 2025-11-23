@@ -489,6 +489,14 @@ class Neo4jClient:
             else:
                 return value
         
+        # Verify connection is alive before querying
+        try:
+            with self.driver.session() as verify_session:
+                verify_session.run("RETURN 1").consume()
+        except Exception as verify_error:
+            logger.error(f"❌ Neo4j connection verification failed before query: {verify_error}")
+            return {"nodes": [], "edges": []}
+        
         with self.driver.session() as session:
             # Collect entity IDs we want to show
             entity_ids = []
