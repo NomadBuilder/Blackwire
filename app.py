@@ -480,7 +480,16 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                             app_logger.debug(f"Error linking related phone: {e}")
             
             elif entity_type == "domain":
-                neo4j_client.create_domain(value, **enrichment_data)
+                # Normalize domain before storing (remove protocol, www, paths)
+                # Use the normalized domain from enrichment_data if available, otherwise normalize value
+                domain_to_store = enrichment_data.get("domain") or value
+                # Ensure it's normalized (enrich_domain normalizes it, but double-check)
+                import re
+                domain_normalized = domain_to_store.strip().lower()
+                domain_normalized = re.sub(r'^https?://', '', domain_normalized)
+                domain_normalized = re.sub(r'^www\.', '', domain_normalized)
+                domain_normalized = domain_normalized.split('/')[0].split('?')[0].split('#')[0].rstrip('/')
+                neo4j_client.create_domain(domain_normalized, **enrichment_data)
                 
                 # Link to host
                 if enrichment_data.get("host_name") or enrichment_data.get("isp"):
