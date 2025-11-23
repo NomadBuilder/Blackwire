@@ -486,7 +486,7 @@ class Neo4jClient:
                         phone_formats.append(f"1{phone_clean}")  # Add 1 to make 1XXXXXXXXXX
                 
                 params["phones"] = list(set(phone_formats))  # Remove duplicates
-                app_logger.debug(f"Phone format variations for query: {params['phones']}")
+                logger.debug(f"Phone format variations for query: {params['phones']}")
                 
                 # Find matching phone nodes - check both phone (primary key) and formatted
                 # Also check raw_input array for backwards compatibility
