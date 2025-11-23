@@ -1156,8 +1156,13 @@ def health():
     }
     
     if neo4j_client and neo4j_client.driver:
-        # Reconnect if connection is dead (e.g., after Render spin-down)
-        neo4j_client._reconnect_if_needed()
+        # Try to reconnect if connection is dead (e.g., after Render spin-down)
+        # But don't fail the health check if it can't reconnect
+        try:
+            neo4j_client._reconnect_if_needed()
+        except Exception as reconnect_error:
+            # Log but don't fail - Neo4j might be temporarily unavailable
+            logger.debug(f"Neo4j reconnection check failed (non-critical): {reconnect_error}")
         
         try:
             # Test connection
