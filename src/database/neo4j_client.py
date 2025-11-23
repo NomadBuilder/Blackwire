@@ -157,14 +157,29 @@ class Neo4jClient:
         # This prevents duplicates when same number is entered in different formats
         primary_key = formatted if formatted else phone
         
+        # Prepare raw_input array - append if not already present
+        # We'll handle this by merging the array properly
         query = """
         MERGE (p:PhoneNumber {phone: $primary_key})
-        SET p.formatted = $formatted,
-            p.raw_input = COALESCE(p.raw_input, []) + CASE WHEN $raw_input NOT IN COALESCE(p.raw_input, []) THEN [$raw_input] ELSE [] END,
+        ON CREATE SET 
+            p.formatted = $formatted,
+            p.raw_input = [$raw_input],
             p.country_code = $country_code,
             p.country = $country,
             p.carrier = $carrier,
             p.is_voip = $is_voip,
+            p.last_seen = datetime()
+        ON MATCH SET
+            p.formatted = $formatted,
+            p.raw_input = CASE 
+                WHEN $raw_input IN COALESCE(p.raw_input, []) 
+                THEN p.raw_input 
+                ELSE p.raw_input + [$raw_input] 
+            END,
+            p.country_code = COALESCE($country_code, p.country_code),
+            p.country = COALESCE($country, p.country),
+            p.carrier = COALESCE($carrier, p.carrier),
+            p.is_voip = COALESCE($is_voip, p.is_voip),
             p.last_seen = datetime()
         RETURN p
         """
