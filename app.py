@@ -1133,6 +1133,7 @@ def upload_csv():
 
 
 @app.route('/api/health', methods=['GET'])
+@app.route('/api/ping', methods=['GET'])  # Keep-alive endpoint to prevent Render spin-down
 def health():
     """Health check endpoint."""
     from src.utils.rate_limiter import get_api_remaining
@@ -1155,6 +1156,9 @@ def health():
     }
     
     if neo4j_client and neo4j_client.driver:
+        # Reconnect if connection is dead (e.g., after Render spin-down)
+        neo4j_client._reconnect_if_needed()
+        
         try:
             # Test connection
             with neo4j_client.driver.session() as session:
