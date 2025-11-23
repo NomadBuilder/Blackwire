@@ -50,22 +50,42 @@ def enrich_phone(phone_number: str) -> Dict:
         phone_clean = re.sub(r'[\s\-\(\)\.]', '', phone_number.strip())
         
         # Try parsing with different approaches
+        # PRIORITY: Try +1 (US/Canada) FIRST for 10-digit numbers (99% of cases)
         parsed = None
-        default_regions = ["US", "CA", "GB", "AU", "MX"]  # Common regions to try
         
-        # First, try parsing without region (if it has country code)
-        try:
-            parsed = phonenumbers.parse(phone_number, None)
-            if phonenumbers.is_valid_number(parsed):
-                # Success!
+        # Strategy 1: If it's a 10-digit number without +, assume +1 (US/Canada) - MOST COMMON CASE
+        if len(phone_clean) == 10 and not phone_clean.startswith("+"):
+            try:
+                test_number = "+1" + phone_clean
+                parsed = phonenumbers.parse(test_number, None)
+                if phonenumbers.is_valid_number(parsed):
+                    logger.debug(f"Parsed {phone_number} by auto-adding +1 (US/Canada)")
+            except phonenumbers.NumberParseException:
                 pass
-            else:
-                parsed = None  # Invalid, try other methods
-        except phonenumbers.NumberParseException as e:
-            # Just try other methods, don't add error yet
-            parsed = None
         
-        # If parsing failed, try with common default regions
+        # Strategy 2: If it's 11 digits starting with 1, try adding +
+        if (not parsed or not phonenumbers.is_valid_number(parsed)) and phone_clean.startswith("1") and len(phone_clean) == 11:
+            try:
+                test_number = "+" + phone_clean
+                parsed = phonenumbers.parse(test_number, None)
+                if phonenumbers.is_valid_number(parsed):
+                    logger.debug(f"Parsed {phone_number} by adding + to 1-prefixed number")
+            except phonenumbers.NumberParseException:
+                pass
+        
+        # Strategy 3: Try parsing without region (if it has explicit country code like +44, +33, etc.)
+        if not parsed or not phonenumbers.is_valid_number(parsed):
+            try:
+                parsed = phonenumbers.parse(phone_number, None)
+                if phonenumbers.is_valid_number(parsed):
+                    logger.debug(f"Parsed {phone_number} with explicit country code")
+                else:
+                    parsed = None
+            except phonenumbers.NumberParseException:
+                parsed = None
+        
+        # Strategy 4: Try with common default regions (US, CA, GB, AU, MX)
+        default_regions = ["US", "CA", "GB", "AU", "MX"]
         if not parsed or not phonenumbers.is_valid_number(parsed):
             for region in default_regions:
                 try:
@@ -76,44 +96,6 @@ def enrich_phone(phone_number: str) -> Dict:
                         break
                 except phonenumbers.NumberParseException:
                     continue
-        
-        # If still not parsed, try with phone number starting with 1 (US/Canada)
-        if (not parsed or not phonenumbers.is_valid_number(parsed)) and phone_clean.startswith("1") and len(phone_clean) == 11:
-            try:
-                # Try as US number
-                parsed_us = phonenumbers.parse(phone_number, "US")
-                if phonenumbers.is_valid_number(parsed_us):
-                    parsed = parsed_us
-                else:
-                    # Try as Canadian number
-                    parsed_ca = phonenumbers.parse(phone_number, "CA")
-                    if phonenumbers.is_valid_number(parsed_ca):
-                        parsed = parsed_ca
-            except phonenumbers.NumberParseException:
-                pass
-        
-        # If still not parsed and starts with common patterns, try adding country code
-        if (not parsed or not phonenumbers.is_valid_number(parsed)) and not phone_clean.startswith("+"):
-            # Try adding US/Canada country code (1) for 10-digit numbers
-            if len(phone_clean) == 10:
-                try:
-                    test_number = "+1" + phone_clean
-                    parsed = phonenumbers.parse(test_number, None)
-                    if phonenumbers.is_valid_number(parsed):
-                        logger.debug(f"Parsed {phone_number} by adding +1 country code")
-                except phonenumbers.NumberParseException:
-                    pass
-        
-        # If number starts with 1 and is 11 digits, it might already have country code
-        if (not parsed or not phonenumbers.is_valid_number(parsed)) and phone_clean.startswith("1") and len(phone_clean) == 11:
-            try:
-                # Try parsing with explicit +1
-                test_number = "+" + phone_clean
-                parsed = phonenumbers.parse(test_number, None)
-                if phonenumbers.is_valid_number(parsed):
-                    logger.debug(f"Parsed {phone_number} by adding + to 1-prefixed number")
-            except phonenumbers.NumberParseException:
-                pass
         
         if parsed and phonenumbers.is_valid_number(parsed):
             result["is_valid"] = True
@@ -148,14 +130,14 @@ def enrich_phone(phone_number: str) -> Dict:
                     result["voip_provider"] = provider
                     result["is_voip"] = True
                     break
-        # Only add errors if we couldn't parse successfully
-        if not parsed or not phonenumbers.is_valid_number(parsed):
+        # Only add errors if we couldn't parse AND have no formatted number
+        # Don't show errors if we successfully parsed (even if it was after trying +1)
+        if (not parsed or not phonenumbers.is_valid_number(parsed)) and not result.get("formatted"):
+            # Only show error if we truly couldn't parse it
             if not parsed:
-                result["errors"].append("Could not parse phone number. Try including country code (e.g., +1 for US/Canada)")
+                result["errors"].append("Could not parse phone number")
             elif not phonenumbers.is_valid_number(parsed):
                 result["errors"].append("Phone number format is invalid")
-            else:
-                result["errors"].append("Phone number validation failed")
         
         # Enhanced lookup with free APIs
         if result["is_valid"] and result["formatted"]:
