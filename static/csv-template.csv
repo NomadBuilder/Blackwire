@@ -1,0 +1,4 @@
+phone,domain,wallet,handle,source,notes
++1234567890,example.com,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa,@username,Manual entry,Test case
+,malicious-site.com,,,CSV upload,Extortion site
+5198000997,,,t.me/scammer,Report,VOIP number

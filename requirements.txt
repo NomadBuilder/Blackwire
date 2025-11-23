@@ -1,0 +1,30 @@
+# Core dependencies
+python-whois==0.8.0
+dnspython==2.4.2
+requests==2.31.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+python-dateutil==2.8.2
+
+# Web framework
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+
+# Neo4j (for graph visualization - optional but recommended)
+neo4j==5.15.0
+
+# Phone number parsing and validation
+phonenumbers==8.13.27
+
+# Crypto wallet validation and blockchain APIs
+# (Using requests for blockchain APIs, no specific library needed)
+
+# Tech stack detection (optional, for domain analysis)
+python-wappalyzer==0.3.1
+setuptools>=80.0.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+

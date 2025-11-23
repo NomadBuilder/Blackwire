@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: blackwire
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: blackwire-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: blackwire-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: blackwire-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: blackwire-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: blackwire-postgres
+          property: database
+      # Neo4j is optional - app works with PostgreSQL only, but graph features need Neo4j
+      # Uncomment and set manually if you want to use Neo4j:
+      # - key: NEO4J_URI
+      #   sync: false
+      # - key: NEO4J_USER
+      #   sync: false
+      # - key: NEO4J_PASSWORD
+      #   sync: false
+      # API Keys - set these manually in Render dashboard
+      - key: IPAPI_KEY
+        sync: false
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: NUMLOOKUP_API_KEY
+        sync: false
+      - key: ETHERSCAN_API_KEY
+        sync: false
+
+databases:
+  - name: blackwire-postgres
+    databaseName: blackwire
+    user: blackwire_user
+    plan: free
+
