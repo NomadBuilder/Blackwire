@@ -1042,11 +1042,7 @@
               }
             }
             
-            if (enrichmentData.reputation_score !== undefined) {
-              const scoreColor = enrichmentData.reputation_score >= 80 ? '#10b981' : 
-                                 enrichmentData.reputation_score >= 60 ? '#f59e0b' : '#ef4444';
-              addResultRow(entityDataContainer, 'Reputation Score', `<span style="color: ${scoreColor};">${enrichmentData.reputation_score}/100</span>`);
-            }
+            // Reputation Score removed - not useful
             
             // Certificate Transparency
             if (enrichmentData.ct_related_domains && enrichmentData.ct_related_domains.length > 0) {
