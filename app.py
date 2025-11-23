@@ -489,7 +489,15 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 domain_normalized = re.sub(r'^https?://', '', domain_normalized)
                 domain_normalized = re.sub(r'^www\.', '', domain_normalized)
                 domain_normalized = domain_normalized.split('/')[0].split('?')[0].split('#')[0].rstrip('/')
-                neo4j_client.create_domain(domain_normalized, **enrichment_data)
+                app_logger.info(f"🌐 Storing domain in Neo4j: value={value}, normalized={domain_normalized}")
+                try:
+                    result = neo4j_client.create_domain(domain_normalized, **enrichment_data)
+                    if result:
+                        app_logger.info(f"✅ Successfully stored domain {domain_normalized} in Neo4j")
+                    else:
+                        app_logger.warning(f"⚠️  create_domain returned None for {domain_normalized}")
+                except Exception as store_error:
+                    app_logger.error(f"❌ Error storing domain {domain_normalized}: {store_error}", exc_info=True)
                 
                 # Link to host
                 if enrichment_data.get("host_name") or enrichment_data.get("isp"):
@@ -551,7 +559,15 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                             app_logger.debug(f"Error linking related domain: {e}")
             
             elif entity_type == "wallet":
-                neo4j_client.create_wallet(value, **enrichment_data)
+                app_logger.info(f"💰 Storing wallet in Neo4j: value={value}")
+                try:
+                    result = neo4j_client.create_wallet(value, **enrichment_data)
+                    if result:
+                        app_logger.info(f"✅ Successfully stored wallet {value} in Neo4j")
+                    else:
+                        app_logger.warning(f"⚠️  create_wallet returned None for {value}")
+                except Exception as store_error:
+                    app_logger.error(f"❌ Error storing wallet {value}: {store_error}", exc_info=True)
                 
                 # Link to currency
                 currency = enrichment_data.get("currency")
@@ -573,7 +589,19 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
             
             elif entity_type == "handle":
                 platform = enrichment_data.get("platform", "Unknown")
-                neo4j_client.create_messaging_handle(value, platform, **enrichment_data)
+                # Normalize handle (remove @ if present for storage, but we'll match both ways in queries)
+                handle_normalized = value.strip()
+                if handle_normalized.startswith('@'):
+                    handle_normalized = handle_normalized[1:]
+                app_logger.info(f"📱 Storing handle in Neo4j: value={value}, normalized={handle_normalized}, platform={platform}")
+                try:
+                    result = neo4j_client.create_messaging_handle(handle_normalized, platform, **enrichment_data)
+                    if result:
+                        app_logger.info(f"✅ Successfully stored handle {handle_normalized} (platform: {platform}) in Neo4j")
+                    else:
+                        app_logger.warning(f"⚠️  create_messaging_handle returned None for {handle_normalized}")
+                except Exception as store_error:
+                    app_logger.error(f"❌ Error storing handle {handle_normalized}: {store_error}", exc_info=True)
                 
                 # Link to platform
                 if platform and platform != "Unknown":
