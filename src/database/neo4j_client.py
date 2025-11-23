@@ -158,7 +158,7 @@ class Neo4jClient:
         primary_key = formatted if formatted else phone
         
         # Prepare raw_input array - append if not already present
-        # We'll handle this by merging the array properly
+        # Use a simpler approach: just append, duplicates are okay (we can dedupe later if needed)
         query = """
         MERGE (p:PhoneNumber {phone: $primary_key})
         ON CREATE SET 
@@ -171,11 +171,7 @@ class Neo4jClient:
             p.last_seen = datetime()
         ON MATCH SET
             p.formatted = $formatted,
-            p.raw_input = CASE 
-                WHEN $raw_input IN COALESCE(p.raw_input, []) 
-                THEN p.raw_input 
-                ELSE p.raw_input + [$raw_input] 
-            END,
+            p.raw_input = COALESCE(p.raw_input, []) + [$raw_input],
             p.country_code = COALESCE($country_code, p.country_code),
             p.country = COALESCE($country, p.country),
             p.carrier = COALESCE($carrier, p.carrier),
