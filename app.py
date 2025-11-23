@@ -52,9 +52,12 @@ postgres_client = None
 if NEO4J_AVAILABLE:
     try:
         neo4j_client = Neo4jClient()
-        app_logger.info("✅ Neo4j client initialized")
+        if neo4j_client and neo4j_client.driver:
+            app_logger.info("✅ Neo4j client initialized and connected")
+        else:
+            app_logger.warning("⚠️  Neo4j client initialized but not connected (driver is None)")
     except Exception as e:
-        app_logger.warning(f"⚠️  Neo4j not available: {e}")
+        app_logger.warning(f"⚠️  Neo4j not available: {e}", exc_info=True)
 
 if POSTGRES_AVAILABLE:
     try:
@@ -928,10 +931,12 @@ def _create_relationships_in_neo4j(relationships: List[Dict], neo4j_client):
 def get_graph():
     """Get graph data for visualization."""
     if not neo4j_client or not neo4j_client.driver:
+        app_logger.warning("Graph API called but Neo4j not available")
         return jsonify({
             "nodes": [],
             "edges": [],
-            "message": "Neo4j not available"
+            "message": "Neo4j not available",
+            "error": "Neo4j connection not established. Check environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD"
         }), 200  # Return empty instead of error so UI can still load
     
     try:
@@ -953,12 +958,15 @@ def get_graph():
             # Get all nodes (for dashboard view)
             graph_data = neo4j_client.get_all_nodes_and_relationships()
         
+        app_logger.info(f"Graph API: Returning {len(graph_data.get('nodes', []))} nodes, {len(graph_data.get('edges', []))} edges")
         return jsonify(graph_data), 200
     except Exception as e:
+        app_logger.error(f"Graph API error: {e}", exc_info=True)
         return jsonify({
             "error": str(e),
             "nodes": [],
-            "edges": []
+            "edges": [],
+            "message": f"Error fetching graph data: {str(e)}"
         }), 200  # Return empty instead of error
 
 

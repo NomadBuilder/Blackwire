@@ -29,14 +29,21 @@ class Neo4jClient:
         password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
         
         try:
+            # Neo4j Aura requires SSL - the driver handles this automatically for neo4j+s:// URIs
             self.driver = GraphDatabase.driver(uri, auth=(user, password))
-            # Test connection
+            # Test connection with timeout
             with self.driver.session() as session:
-                session.run("RETURN 1")
-            print("✅ Neo4j connection established")
+                result = session.run("RETURN 1 as test")
+                result.consume()  # Consume result to ensure query completes
+            print(f"✅ Neo4j connection established to {uri}")
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             print(f"⚠️  Could not connect to Neo4j: {e}")
-            print("   Neo4j will be optional. Start with: docker-compose up -d")
+            print(f"   URI: {uri}")
+            print(f"   User: {user}")
+            print(f"   Error details: {error_details}")
+            print("   Neo4j will be optional. Graph features will be disabled.")
             self.driver = None
     
     def close(self):
