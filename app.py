@@ -45,6 +45,28 @@ app = Flask(__name__)
 CORS(app)
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 
+# Add Content Security Policy to block browser extension scripts
+@app.after_request
+def set_security_headers(response):
+    """Add security headers including CSP to block extension scripts."""
+    # Content Security Policy: Allow self, block external extension scripts
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://d3js.org; "  # Allow D3.js and inline scripts
+        "style-src 'self' 'unsafe-inline'; "  # Allow inline styles
+        "img-src 'self' data: https:; "  # Allow images from self, data URIs, and HTTPS
+        "font-src 'self' data:; "  # Allow fonts from self and data URIs
+        "connect-src 'self' https://api.ipapi.com https://api.numlookupapi.com https://www.virustotal.com https://api.etherscan.io https://blockchain.info https://api.blockchair.com https://*.databases.neo4j.io; "  # Allow API connections
+        "frame-ancestors 'none'; "  # Prevent clickjacking
+        "base-uri 'self'; "  # Restrict base tag
+        "form-action 'self'; "  # Restrict form submissions
+    )
+    response.headers['Content-Security-Policy'] = csp
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
+
 # Initialize database clients if available
 neo4j_client = None
 postgres_client = None
