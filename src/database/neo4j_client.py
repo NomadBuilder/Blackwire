@@ -146,54 +146,58 @@ class Neo4jClient:
                     except:
                         pass  # Continue with reconnection
                     
-                    # Fully close old driver (this is important for cleanup)
-                    old_driver = self.driver
-                    self.driver = None  # Set to None first to prevent concurrent access
-                    
                     try:
-                        old_driver.close()
-                    except Exception as close_error:
-                        logger.debug(f"Error closing old driver (expected): {close_error}")
-                    
-                    # Small delay to ensure cleanup completes
-                    import time
-                    time.sleep(0.5)
-                    
-                    # Recreate connection with fresh settings
-                    uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-                    user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
-                    password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
-                    
-                    from neo4j import GraphDatabase
-                    self.driver = GraphDatabase.driver(
-                        uri, 
-                        auth=(user, password),
-                        max_connection_lifetime=1800,  # 30 minutes (shorter for free tier)
-                        max_connection_pool_size=10,  # Smaller pool for free tier
-                        connection_acquisition_timeout=30,  # Shorter timeout
-                        connection_timeout=15,  # Shorter timeout
-                        keep_alive=True  # Enable keep-alive
-                    )
-                    
-                    # Verify new connection with retry
-                    max_verify_attempts = 3
-                    for verify_attempt in range(max_verify_attempts):
+                        # Fully close old driver (this is important for cleanup)
+                        old_driver = self.driver
+                        self.driver = None  # Set to None first to prevent concurrent access
+                        
                         try:
-                            with self.driver.session() as verify_session:
-                                verify_session.run("RETURN 1").consume()
-                            logger.info("✅ Neo4j connection re-established successfully")
-                            return True
-                        except Exception as verify_error:
-                            if verify_attempt < max_verify_attempts - 1:
-                                logger.debug(f"Connection verification attempt {verify_attempt + 1} failed, retrying...")
-                                time.sleep(0.5)
-                            else:
-                                raise verify_error
-                    
-                except Exception as reconnect_error:
-                    logger.error(f"❌ Failed to reconnect to Neo4j: {reconnect_error}")
-                    self.driver = None
-                    return False
+                            old_driver.close()
+                        except Exception as close_error:
+                            logger.debug(f"Error closing old driver (expected): {close_error}")
+                        
+                        # Small delay to ensure cleanup completes
+                        import time
+                        time.sleep(0.5)
+                        
+                        # Recreate connection with fresh settings
+                        uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+                        user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
+                        password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
+                        
+                        from neo4j import GraphDatabase
+                        self.driver = GraphDatabase.driver(
+                            uri, 
+                            auth=(user, password),
+                            max_connection_lifetime=1800,  # 30 minutes (shorter for free tier)
+                            max_connection_pool_size=10,  # Smaller pool for free tier
+                            connection_acquisition_timeout=30,  # Shorter timeout
+                            connection_timeout=15,  # Shorter timeout
+                            keep_alive=True  # Enable keep-alive
+                        )
+                        
+                        # Verify new connection with retry
+                        max_verify_attempts = 3
+                        for verify_attempt in range(max_verify_attempts):
+                            try:
+                                with self.driver.session() as verify_session:
+                                    verify_session.run("RETURN 1").consume()
+                                logger.info("✅ Neo4j connection re-established successfully")
+                                return True
+                            except Exception as verify_error:
+                                verify_error_str = str(verify_error).lower()
+                                is_routing_error = "service unavailable" in verify_error_str or "routing" in verify_error_str or "unable to retrieve" in verify_error_str
+                                
+                                if verify_attempt < max_verify_attempts - 1:
+                                    wait_time = 1 * (verify_attempt + 1) if is_routing_error else 0.5
+                                    logger.debug(f"Connection verification attempt {verify_attempt + 1} failed ({'routing error' if is_routing_error else 'connection error'}), retrying in {wait_time}s...")
+                                    time.sleep(wait_time)
+                                else:
+                                    raise verify_error
+                    except Exception as reconnect_error:
+                        logger.error(f"❌ Failed to reconnect to Neo4j: {reconnect_error}")
+                        self.driver = None
+                        return False
             else:
                 # Not a connection error, re-raise
                 raise
