@@ -811,26 +811,74 @@ class Neo4jClient:
                     logger.info(f"📋 Sample domains in database: {sample_domains}")
             
             if entities_to_show.get("wallet"):
-                params["wallets"] = list(set(entities_to_show["wallet"]))
+                wallets = list(set(entities_to_show["wallet"]))
+                params["wallets"] = wallets
+                logger.info(f"🔍 Searching for wallets: {params['wallets']}")
+                
                 wallet_query = """
                 MATCH (n:Wallet)
                 WHERE n.address IN $wallets
-                RETURN id(n) as nid, n
+                RETURN DISTINCT id(n) as nid, n.address as address
                 """
                 wallet_result = session.run(wallet_query, params)
+                found_count = 0
                 for record in wallet_result:
-                    entity_ids.append(record["nid"])
+                    nid = record["nid"]
+                    wallet_val = record.get("address", "")
+                    if nid not in entity_ids:  # Avoid duplicates
+                        entity_ids.append(nid)
+                        found_count += 1
+                        logger.info(f"✅ Found wallet node: id={nid}, address={wallet_val}")
+                
+                if found_count == 0:
+                    logger.warning(f"⚠️  No wallet nodes found for: {params['wallets']}")
+                    # Debug: Check what's actually in the database
+                    sample_query = "MATCH (n:Wallet) RETURN n.address as address LIMIT 5"
+                    sample_result = session.run(sample_query)
+                    sample_wallets = [r.get("address", "") for r in sample_result]
+                    logger.info(f"📋 Sample wallets in database: {sample_wallets}")
             
             if entities_to_show.get("handle"):
-                params["handles"] = list(set(entities_to_show["handle"]))
+                handles = list(set(entities_to_show["handle"]))
+                # Handles might be in format "handle" or "@handle" - normalize
+                handle_formats = []
+                handle_platforms = []
+                for handle in handles:
+                    handle_clean = handle.strip()
+                    # Remove @ prefix if present
+                    if handle_clean.startswith('@'):
+                        handle_clean = handle_clean[1:]
+                    handle_formats.append(handle_clean)
+                    handle_formats.append(f"@{handle_clean}")  # Also try with @
+                
+                params["handles"] = list(set(handle_formats))
+                logger.info(f"🔍 Searching for handles with formats: {params['handles']}")
+                
+                # Handles are stored with both handle and platform, so we need to match on handle
+                # (platform might vary, so match on handle only)
                 handle_query = """
                 MATCH (n:MessagingHandle)
                 WHERE n.handle IN $handles
-                RETURN id(n) as nid, n
+                RETURN DISTINCT id(n) as nid, n.handle as handle, n.platform as platform
                 """
                 handle_result = session.run(handle_query, params)
+                found_count = 0
                 for record in handle_result:
-                    entity_ids.append(record["nid"])
+                    nid = record["nid"]
+                    handle_val = record.get("handle", "")
+                    platform_val = record.get("platform", "")
+                    if nid not in entity_ids:  # Avoid duplicates
+                        entity_ids.append(nid)
+                        found_count += 1
+                        logger.info(f"✅ Found handle node: id={nid}, handle={handle_val}, platform={platform_val}")
+                
+                if found_count == 0:
+                    logger.warning(f"⚠️  No handle nodes found for formats: {params['handles']}")
+                    # Debug: Check what's actually in the database
+                    sample_query = "MATCH (n:MessagingHandle) RETURN n.handle as handle, n.platform as platform LIMIT 5"
+                    sample_result = session.run(sample_query)
+                    sample_handles = [{"handle": r.get("handle", ""), "platform": r.get("platform", "")} for r in sample_result]
+                    logger.info(f"📋 Sample handles in database: {sample_handles}")
             
             if not entity_ids:
                 logger.warning(f"⚠️  No entity IDs found for search: {entities_to_show}")
