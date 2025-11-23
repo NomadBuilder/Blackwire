@@ -772,14 +772,23 @@
       window.traceResults = result.results || [];
       
       // Store entities from current search for graph filtering
+      // Use formatted values for phones (E.164 format) to match what's stored in Neo4j
       window.currentSearchEntities = [];
       if (result.results && Array.isArray(result.results)) {
         result.results.forEach(entityResult => {
           const entityType = entityResult.type;
-          const entityValue = entityResult.value;
+          let entityValue = entityResult.value;
+          
+          // For phones, prefer formatted value (E.164) if available, as that's what's stored in Neo4j
+          if (entityType === 'phone' && entityResult.data && entityResult.data.formatted) {
+            entityValue = entityResult.data.formatted;
+          }
+          
           window.currentSearchEntities.push(`${entityType}:${entityValue}`);
         });
       }
+      
+      console.log('📝 Stored currentSearchEntities:', window.currentSearchEntities);
       
       // Display results for each traced entity
       if (result.results && Array.isArray(result.results)) {

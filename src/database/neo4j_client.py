@@ -463,20 +463,30 @@ class Neo4jClient:
                 # Build format variations to match normalized stored format
                 phone_formats = []
                 for phone in phones:
-                    # Try to normalize to E.164 format (what we store)
+                    # Clean phone number
                     phone_clean = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                    
+                    # Always include the original (might already be formatted)
                     phone_formats.append(phone_clean)
-                    if phone_clean.isdigit() and len(phone_clean) == 10:
-                        # 10-digit: add +1 prefix (most common case)
-                        phone_formats.append(f"+1{phone_clean}")
-                    elif phone_clean.startswith("+1") and len(phone_clean) == 12:
-                        # Already has +1
+                    
+                    # Generate all possible format variations
+                    if phone_clean.startswith("+1") and len(phone_clean) == 12:
+                        # Already E.164 format (+1XXXXXXXXXX) - this is what we store
                         phone_formats.append(phone_clean)
+                        # Also try without +1 for matching
+                        phone_formats.append(phone_clean[2:])  # Remove +1
+                        phone_formats.append(phone_clean[1:])  # Remove +
                     elif phone_clean.startswith("1") and len(phone_clean) == 11:
-                        # Has 1 prefix, add +
-                        phone_formats.append(f"+{phone_clean}")
+                        # Has 1 prefix (1XXXXXXXXXX)
+                        phone_formats.append(f"+{phone_clean}")  # Add + to make +1XXXXXXXXXX
+                        phone_formats.append(phone_clean[1:])  # Remove 1 to make 10-digit
+                    elif phone_clean.isdigit() and len(phone_clean) == 10:
+                        # 10-digit number (XXXXXXXXXX) - most common case
+                        phone_formats.append(f"+1{phone_clean}")  # Add +1 to make +1XXXXXXXXXX
+                        phone_formats.append(f"1{phone_clean}")  # Add 1 to make 1XXXXXXXXXX
                 
-                params["phones"] = list(set(phone_formats))
+                params["phones"] = list(set(phone_formats))  # Remove duplicates
+                app_logger.debug(f"Phone format variations for query: {params['phones']}")
                 
                 # Find matching phone nodes - check both phone (primary key) and formatted
                 # Also check raw_input array for backwards compatibility
