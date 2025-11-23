@@ -79,8 +79,20 @@ class Neo4jClient:
         except Exception as e:
             error_str = str(e).lower()
             if "defunct" in error_str or "failed to write" in error_str or "failed to read" in error_str:
-                logger.warning(f"⚠️  Neo4j connection is dead, attempting to reconnect...")
-                try:
+                # Use lock to prevent concurrent reconnection attempts
+                with _reconnect_lock:
+                    # Double-check: another thread might have already reconnected
+                    if not self.driver:
+                        return False
+                    
+                    # Test again in case another thread fixed it
+                    try:
+                        with self.driver.session() as quick_test:
+                            quick_test.run("RETURN 1").consume()
+                        return True  # Another thread fixed it
+                    except:
+                        pass  # Continue with reconnection
+                    
                     # Fully close old driver (this is important for cleanup)
                     old_driver = self.driver
                     self.driver = None  # Set to None first to prevent concurrent access
