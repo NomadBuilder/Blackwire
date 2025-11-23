@@ -508,7 +508,7 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                             ip=enrichment_data.get("ip_address"),
                             isp=enrichment_data.get("isp")
                         )
-                        neo4j_client.link_domain_to_host(value, host_name)
+                        neo4j_client.link_domain_to_host(domain_normalized, host_name)
                     except Exception as e:
                         app_logger.debug(f"Error linking domain to host: {e}")
                 
@@ -516,7 +516,7 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 if enrichment_data.get("cdn"):
                     try:
                         neo4j_client.create_cdn(enrichment_data["cdn"])
-                        neo4j_client.link_domain_to_cdn(value, enrichment_data["cdn"])
+                        neo4j_client.link_domain_to_cdn(domain_normalized, enrichment_data["cdn"])
                     except Exception as e:
                         app_logger.debug(f"Error linking domain to CDN: {e}")
                 
@@ -524,7 +524,7 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 if enrichment_data.get("registrar"):
                     try:
                         neo4j_client.create_registrar(enrichment_data["registrar"])
-                        neo4j_client.link_domain_to_registrar(value, enrichment_data["registrar"])
+                        neo4j_client.link_domain_to_registrar(domain_normalized, enrichment_data["registrar"])
                     except Exception as e:
                         app_logger.debug(f"Error linking domain to registrar: {e}")
                 
@@ -532,7 +532,7 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 if enrichment_data.get("cms"):
                     try:
                         neo4j_client.create_cms(enrichment_data["cms"])
-                        neo4j_client.link_domain_to_cms(value, enrichment_data["cms"])
+                        neo4j_client.link_domain_to_cms(domain_normalized, enrichment_data["cms"])
                     except Exception as e:
                         app_logger.debug(f"Error linking domain to CMS: {e}")
                 
@@ -545,7 +545,7 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                                 # Normalize nameserver name (remove trailing dots)
                                 ns_clean = ns.rstrip('.').lower()
                                 neo4j_client.create_nameserver(ns_clean)
-                                neo4j_client.link_domain_to_nameserver(value, ns_clean)
+                                neo4j_client.link_domain_to_nameserver(domain_normalized, ns_clean)
                             except Exception as e:
                                 app_logger.debug(f"Error linking domain to nameserver {ns}: {e}")
                 
