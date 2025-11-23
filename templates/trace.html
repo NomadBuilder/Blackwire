@@ -772,7 +772,7 @@
       window.traceResults = result.results || [];
       
       // Store entities from current search for graph filtering
-      // Use formatted values for phones (E.164 format) to match what's stored in Neo4j
+      // Use formatted/normalized values to match what's stored in Neo4j
       window.currentSearchEntities = [];
       if (result.results && Array.isArray(result.results)) {
         result.results.forEach(entityResult => {
@@ -783,6 +783,22 @@
           if (entityType === 'phone' && entityResult.data && entityResult.data.formatted) {
             entityValue = entityResult.data.formatted;
           }
+          
+          // For domains, normalize (remove protocol, www, paths) to match stored format
+          if (entityType === 'domain') {
+            entityValue = entityValue.trim().toLowerCase();
+            // Remove protocol
+            entityValue = entityValue.replace(/^https?:\/\//, '');
+            // Remove www.
+            entityValue = entityValue.replace(/^www\./, '');
+            // Remove paths, query strings, fragments
+            entityValue = entityValue.split('/')[0].split('?')[0].split('#')[0];
+            // Remove trailing slash
+            entityValue = entityValue.replace(/\/$/, '');
+          }
+          
+          // For wallets, use as-is (already normalized)
+          // For handles, use as-is (format is handle|platform)
           
           window.currentSearchEntities.push(`${entityType}:${entityValue}`);
         });
