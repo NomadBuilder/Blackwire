@@ -623,6 +623,21 @@ class Neo4jClient:
                         logger.info(f"✅ Found phone node: id={nid}, phone={phone_val}, formatted={formatted_val}")
                 
                 if found_count == 0:
+                    # Debug: Check what's actually in the database
+                    logger.warning(f"⚠️  No phone nodes found for formats: {params['phones']}")
+                    # Try to get a sample of all phone nodes to see what format they're stored in
+                    sample_query = "MATCH (n:PhoneNumber) RETURN n.phone as phone, n.formatted as formatted, n.raw_input as raw_input LIMIT 5"
+                    sample_result = session.run(sample_query)
+                    sample_phones = []
+                    for sample_record in sample_result:
+                        sample_phones.append({
+                            "phone": sample_record.get("phone", ""),
+                            "formatted": sample_record.get("formatted", ""),
+                            "raw_input": sample_record.get("raw_input", [])
+                        })
+                    logger.info(f"📋 Sample phones in database: {sample_phones}")
+                
+                if found_count == 0:
                     logger.warning(f"⚠️  No phone nodes found for formats: {params['phones']}")
                     # Debug: Check what phones actually exist in the database
                     debug_query = "MATCH (n:PhoneNumber) RETURN n.phone as phone, n.formatted as formatted LIMIT 10"
