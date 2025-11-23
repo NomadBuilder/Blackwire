@@ -424,26 +424,27 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
                 app_logger.debug(f"📞 Storing phone in Neo4j: value={value}, formatted={formatted}")
                 neo4j_client.create_phone(formatted, **enrichment_data)
                 
-                # Link to country
+                # Link to country (use formatted phone as key)
                 if enrichment_data.get("country"):
                     try:
                         neo4j_client.create_country(enrichment_data["country"])
-                        neo4j_client.link_phone_to_country(value, enrichment_data["country"])
+                        neo4j_client.link_phone_to_country(formatted, enrichment_data["country"])
                     except Exception as e:
                         app_logger.debug(f"Error linking phone to country: {e}")
                 
                 if enrichment_data.get("voip_provider"):
                     neo4j_client.create_voip_provider(enrichment_data["voip_provider"])
-                    neo4j_client.link_phone_to_voip(value, enrichment_data["voip_provider"])
+                    neo4j_client.link_phone_to_voip(formatted, enrichment_data["voip_provider"])
                 
-                # Link to related phones
+                # Link to related phones (use formatted value from related entity data)
                 for rel in related_entities:
                     if rel["type"] == "phone" and rel["relationship"] == "same_voip_provider":
                         try:
-                            neo4j_client.create_phone(rel["id"], **rel.get("data", {}))
+                            rel_formatted = rel.get("data", {}).get("formatted") or rel["id"]
+                            neo4j_client.create_phone(rel_formatted, **rel.get("data", {}))
                             if enrichment_data.get("voip_provider"):
                                 neo4j_client.create_voip_provider(enrichment_data["voip_provider"])
-                                neo4j_client.link_phone_to_voip(rel["id"], enrichment_data["voip_provider"])
+                                neo4j_client.link_phone_to_voip(rel_formatted, enrichment_data["voip_provider"])
                         except Exception as e:
                             app_logger.debug(f"Error linking related phone: {e}")
             
