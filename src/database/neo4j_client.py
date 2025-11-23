@@ -68,33 +68,56 @@ class Neo4jClient:
     
     def _reconnect_if_needed(self):
         """Reconnect to Neo4j if the connection is dead (e.g., after Render spin-down)."""
+        import time
+        
         # If driver is None, we need to create it
         if not self.driver:
-            # Create new connection
+            # Create new connection with retries for ServiceUnavailable errors
             uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
             user = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER", "neo4j")
             password = os.getenv("NEO4J_PASSWORD", "blackwire123password")
             
-            try:
-                from neo4j import GraphDatabase
-                self.driver = GraphDatabase.driver(
-                    uri, 
-                    auth=(user, password),
-                    max_connection_lifetime=1800,  # 30 minutes (shorter for free tier)
-                    max_connection_pool_size=10,  # Smaller pool for free tier
-                    connection_acquisition_timeout=30,  # Shorter timeout
-                    connection_timeout=15,  # Shorter timeout
-                    keep_alive=True  # Enable keep-alive
-                )
-                # Verify connection
-                with self.driver.session() as verify_session:
-                    verify_session.run("RETURN 1").consume()
-                logger.info("✅ Neo4j connection established")
-                return True
-            except Exception as e:
-                logger.error(f"❌ Failed to create Neo4j connection: {e}")
-                self.driver = None
-                return False
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    from neo4j import GraphDatabase
+                    self.driver = GraphDatabase.driver(
+                        uri, 
+                        auth=(user, password),
+                        max_connection_lifetime=1800,  # 30 minutes (shorter for free tier)
+                        max_connection_pool_size=10,  # Smaller pool for free tier
+                        connection_acquisition_timeout=30,  # Shorter timeout
+                        connection_timeout=15,  # Shorter timeout
+                        keep_alive=True  # Enable keep-alive
+                    )
+                    # Verify connection with retry
+                    for verify_retry in range(3):
+                        try:
+                            with self.driver.session() as verify_session:
+                                verify_session.run("RETURN 1").consume()
+                            logger.info("✅ Neo4j connection established")
+                            return True
+                        except Exception as verify_error:
+                            error_str = str(verify_error).lower()
+                            if "service unavailable" in error_str or "routing" in error_str:
+                                if verify_retry < 2:
+                                    logger.debug(f"Routing error during verification (attempt {verify_retry + 1}/3), retrying...")
+                                    time.sleep(1 * (verify_retry + 1))  # Exponential backoff
+                                    continue
+                            raise verify_error
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_routing_error = "service unavailable" in error_str or "routing" in error_str or "unable to retrieve" in error_str
+                    
+                    if is_routing_error and retry < max_retries - 1:
+                        wait_time = 2 * (retry + 1)  # Exponential backoff: 2s, 4s, 6s
+                        logger.warning(f"⚠️  Neo4j routing error (attempt {retry + 1}/{max_retries}): {str(e)[:100]}. Retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"❌ Failed to create Neo4j connection: {str(e)[:200]}")
+                        self.driver = None
+                        return False
         
         # Driver exists, test if it's alive
         try:
@@ -184,12 +207,15 @@ class Neo4jClient:
                     return list(session.run(query, parameters or {}))
             except Exception as e:
                 error_str = str(e).lower()
-                # Check if it's a connection error
+                # Check if it's a connection error (including routing/ServiceUnavailable)
                 is_connection_error = (
                     "defunct" in error_str or 
                     "failed to write" in error_str or 
                     "failed to read" in error_str or
-                    "connection" in error_str and ("closed" in error_str or "dead" in error_str)
+                    "connection" in error_str and ("closed" in error_str or "dead" in error_str) or
+                    "service unavailable" in error_str or
+                    "routing" in error_str or
+                    "unable to retrieve" in error_str
                 )
                 
                 if is_connection_error:
