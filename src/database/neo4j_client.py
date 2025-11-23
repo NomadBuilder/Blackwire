@@ -887,18 +887,16 @@ class Neo4jClient:
             logger.info(f"✅ Found {len(entity_ids)} entity IDs to display in graph")
             
             # Get our entities and their relationship nodes only (NOT other entity nodes)
-            # First, always include our entities (even if they have no relationships)
-            # Then, optionally include their relationship nodes
+            # Use UNION to ensure we get all entities first, then their relationships
             all_nodes_query = """
+            // First part: Always return all our entities (even if they have no relationships)
             MATCH (start)
             WHERE id(start) IN $entity_ids
-            // Always return the start node
-            WITH id(start) as start_id, start, -1 as rel_id, null as rel_node
-            RETURN start_id, start, rel_id, rel_node
+            RETURN id(start) as start_id, start, -1 as rel_id, null as rel_node
             
             UNION ALL
             
-            // Then get relationship nodes for entities that have them
+            // Second part: Get relationship nodes for entities that have them
             MATCH (start)
             WHERE id(start) IN $entity_ids
             MATCH (start)-[r]-(rel_node)
