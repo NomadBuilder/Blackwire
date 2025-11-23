@@ -1,11 +1,15 @@
 """Neo4j graph database client for storing BlackWire entity relationships."""
 
 import os
+import threading
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 from src.utils.logger import logger
 
 load_dotenv()
+
+# Lock to prevent concurrent reconnection attempts
+_reconnect_lock = threading.Lock()
 
 # Try to import Neo4j driver (optional)
 try:
