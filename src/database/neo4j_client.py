@@ -62,13 +62,18 @@ class Neo4jClient:
     # Phone number nodes
     def create_phone(self, phone: str, **properties):
         """Create or update a phone number node."""
-        # Normalize phone: store raw value, ensure formatted is also set
-        # If phone doesn't match formatted, store both formats
+        # Normalize: Always use formatted number as the primary key to avoid duplicates
+        # Store raw value as a property for reference
         formatted = properties.get("formatted") or phone
         
+        # Use formatted as the primary key (normalized E.164 format)
+        # This prevents duplicates when same number is entered in different formats
+        primary_key = formatted if formatted else phone
+        
         query = """
-        MERGE (p:PhoneNumber {phone: $phone})
+        MERGE (p:PhoneNumber {phone: $primary_key})
         SET p.formatted = $formatted,
+            p.raw_input = COALESCE(p.raw_input, []) + CASE WHEN $raw_input NOT IN COALESCE(p.raw_input, []) THEN [$raw_input] ELSE [] END,
             p.country_code = $country_code,
             p.country = $country,
             p.carrier = $carrier,
@@ -77,44 +82,14 @@ class Neo4jClient:
         RETURN p
         """
         result = self._execute_query(query, {
-            "phone": phone,
+            "primary_key": primary_key,
+            "raw_input": phone,  # Store original input for reference
             "formatted": formatted,
             "country_code": properties.get("country_code"),
             "country": properties.get("country"),
             "carrier": properties.get("carrier"),
             "is_voip": properties.get("is_voip", False)
         })
-        
-        # Also create a node with formatted number if different (for matching)
-        if formatted and formatted != phone:
-            query2 = """
-            MERGE (p2:PhoneNumber {phone: $formatted})
-            SET p2.formatted = $formatted,
-                p2.country_code = $country_code,
-                p2.country = $country,
-                p2.carrier = $carrier,
-                p2.is_voip = $is_voip,
-                p2.last_seen = datetime()
-            RETURN p2
-            """
-            self._execute_query(query2, {
-                "phone": formatted,
-                "formatted": formatted,
-                "country_code": properties.get("country_code"),
-                "country": properties.get("country"),
-                "carrier": properties.get("carrier"),
-                "is_voip": properties.get("is_voip", False)
-            })
-            
-            # Link them together
-            link_query = """
-            MATCH (p1:PhoneNumber {phone: $phone1})
-            MATCH (p2:PhoneNumber {phone: $phone2})
-            WHERE p1 <> p2
-            MERGE (p1)-[:SAME_AS]->(p2)
-            RETURN p1, p2
-            """
-            self._execute_query(link_query, {"phone1": phone, "phone2": formatted})
         
         return result
     
@@ -485,28 +460,40 @@ class Neo4jClient:
             # Find entities and collect their IDs
             if entities_to_show.get("phone"):
                 phones = list(set(entities_to_show["phone"]))  # Dedupe
-                # Build format variations
+                # Build format variations to match normalized stored format
                 phone_formats = []
                 for phone in phones:
-                    phone_formats.append(phone)
-                    if phone.isdigit() and len(phone) == 10:
-                        phone_formats.extend([f"+1{phone}", f"1{phone}"])
-                    elif phone.startswith("+1") and len(phone) == 12:
-                        phone_formats.append(phone[2:])
-                    elif phone.startswith("1") and len(phone) == 11:
-                        phone_formats.append(phone[1:])
+                    # Try to normalize to E.164 format (what we store)
+                    phone_clean = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                    phone_formats.append(phone_clean)
+                    if phone_clean.isdigit() and len(phone_clean) == 10:
+                        # 10-digit: add +1 prefix (most common case)
+                        phone_formats.append(f"+1{phone_clean}")
+                    elif phone_clean.startswith("+1") and len(phone_clean) == 12:
+                        # Already has +1
+                        phone_formats.append(phone_clean)
+                    elif phone_clean.startswith("1") and len(phone_clean) == 11:
+                        # Has 1 prefix, add +
+                        phone_formats.append(f"+{phone_clean}")
                 
                 params["phones"] = list(set(phone_formats))
                 
-                # Find matching phone nodes
+                # Find matching phone nodes - check both phone (primary key) and formatted
+                # Also check raw_input array for backwards compatibility
                 phone_query = """
                 MATCH (n:PhoneNumber)
-                WHERE n.phone IN $phones OR n.formatted IN $phones
-                RETURN id(n) as nid, n
+                WHERE n.phone IN $phones 
+                   OR n.formatted IN $phones
+                   OR ANY(phone_var IN $phones WHERE phone_var IN COALESCE(n.raw_input, []))
+                RETURN DISTINCT id(n) as nid, n
                 """
                 phone_result = session.run(phone_query, params)
+                seen_ids = set()
                 for record in phone_result:
-                    entity_ids.append(record["nid"])
+                    nid = record["nid"]
+                    if nid not in seen_ids:  # Deduplicate
+                        entity_ids.append(nid)
+                        seen_ids.add(nid)
             
             if entities_to_show.get("domain"):
                 params["domains"] = list(set(entities_to_show["domain"]))

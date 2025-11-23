@@ -418,10 +418,11 @@ def _find_and_link_entities(entity_type: str, value: str, enrichment_data: Dict,
     if neo4j_client and neo4j_client.driver:
         try:
             if entity_type == "phone":
-                # Ensure phone is stored with the raw value (not formatted)
-                # The formatted value goes in the 'formatted' property
-                app_logger.debug(f"📞 Storing phone in Neo4j: value={value}, formatted={enrichment_data.get('formatted')}")
-                neo4j_client.create_phone(value, **enrichment_data)
+                # Store phone using formatted value as primary key to avoid duplicates
+                # The formatted value (E.164) is used as the node key
+                formatted = enrichment_data.get('formatted') or value
+                app_logger.debug(f"📞 Storing phone in Neo4j: value={value}, formatted={formatted}")
+                neo4j_client.create_phone(formatted, **enrichment_data)
                 
                 # Link to country
                 if enrichment_data.get("country"):
