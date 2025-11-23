@@ -887,17 +887,27 @@ class Neo4jClient:
             logger.info(f"✅ Found {len(entity_ids)} entity IDs to display in graph")
             
             # Get our entities and their relationship nodes only (NOT other entity nodes)
+            # First, always include our entities (even if they have no relationships)
+            # Then, optionally include their relationship nodes
             all_nodes_query = """
             MATCH (start)
             WHERE id(start) IN $entity_ids
-            // Get direct relationship nodes (Country, Host, etc.) but NOT other entity nodes
-            OPTIONAL MATCH (start)-[r]-(rel_node)
+            // Always return the start node
+            WITH id(start) as start_id, start, -1 as rel_id, null as rel_node
+            RETURN start_id, start, rel_id, rel_node
+            
+            UNION ALL
+            
+            // Then get relationship nodes for entities that have them
+            MATCH (start)
+            WHERE id(start) IN $entity_ids
+            MATCH (start)-[r]-(rel_node)
             WHERE (rel_node:Country OR rel_node:Currency OR rel_node:Host OR rel_node:CDN 
                    OR rel_node:Registrar OR rel_node:CMS OR rel_node:Nameserver 
                    OR rel_node:Platform OR rel_node:VOIPProvider)
                AND NOT (rel_node:PhoneNumber OR rel_node:Domain OR rel_node:Wallet OR rel_node:MessagingHandle)
             RETURN DISTINCT id(start) as start_id, start, 
-                   COALESCE(id(rel_node), -1) as rel_id, 
+                   id(rel_node) as rel_id, 
                    rel_node
             """
             
@@ -905,7 +915,7 @@ class Neo4jClient:
             
             # Collect all unique nodes - only our entities and their relationship nodes
             for record in result:
-                # Add start node (our entity)
+                # Add start node (our entity) - always include even if no relationships
                 if record.get("start"):
                     start_node = record["start"]
                     start_id = str(record["start_id"])
